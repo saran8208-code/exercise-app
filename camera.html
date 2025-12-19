@@ -24,13 +24,13 @@
     video, canvas { width: 100%; max-height: 55vh; }
     canvas { position: absolute; left: 0; top: 0; }
     button {
-      margin: 15px;
-      padding: 15px 30px;
-      font-size: 20px;
+      margin: 10px;
+      padding: 12px 25px;
+      font-size: 18px;
       background: red;
       color: white;
       border: none;
-      border-radius: 10px;
+      border-radius: 8px;
     }
   </style>
 </head>
@@ -39,102 +39,131 @@
 
   <div class="header">Chair Squat</div>
   <div class="counter" id="count">0</div>
-  <div class="status" id="status">Stand straight</div>
+  <div class="status" id="status">Calibration: Stand straight</div>
 
   <div class="container">
     <video id="video" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
   </div>
 
+  <button id="startBtn" disabled>Start Exercise</button>
   <button onclick="closeExercise()">Close</button>
 
 <script>
-  const video = document.getElementById("video");
-  const canvas = document.getElementById("canvas");
-  const ctx = canvas.getContext("2d");
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const countText = document.getElementById("count");
+const statusText = document.getElementById("status");
+const startBtn = document.getElementById("startBtn");
 
-  const countText = document.getElementById("count");
-  const statusText = document.getElementById("status");
+let count = 0;
+let stage = "up";
+let downFrameCount = 0;
+const DOWN_FRAME_REQUIRED = 10;
 
-  let count = 0;
-  let stage = "up";
+// Calibration
+let calibrationFrames = 0;
+const CALIBRATION_REQUIRED = 30; // ~1 second at 30fps
+let standingAngle = null;
+let exerciseStarted = false;
 
-  // For stable detection
-  let downFrameCount = 0;
-  const DOWN_FRAME_REQUIRED = 10;
+function calculateAngle(a, b, c) {
+  const ab = Math.hypot(a.x - b.x, a.y - b.y);
+  const bc = Math.hypot(b.x - c.x, b.y - c.y);
+  const ac = Math.hypot(a.x - c.x, a.y - c.y);
+  return Math.acos((ab*ab + bc*bc - ac*ac) / (2*ab*bc)) * (180 / Math.PI);
+}
 
-  function calculateAngle(a, b, c) {
-    const ab = Math.hypot(a.x - b.x, a.y - b.y);
-    const bc = Math.hypot(b.x - c.x, b.y - c.y);
-    const ac = Math.hypot(a.x - c.x, a.y - c.y);
-    return Math.acos((ab*ab + bc*bc - ac*ac) / (2*ab*bc)) * (180 / Math.PI);
+const pose = new Pose({
+  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+});
+
+pose.setOptions({
+  modelComplexity: 1,
+  smoothLandmarks: true,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5
+});
+
+pose.onResults(results => {
+  if (!results.poseLandmarks) return;
+
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw skeleton
+  drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, { color: "#00FF00", lineWidth: 4 });
+  drawLandmarks(ctx, results.poseLandmarks, { color: "#FF0000", lineWidth: 2 });
+
+  // LEFT LEG
+  const hip = results.poseLandmarks[23];
+  const knee = results.poseLandmarks[25];
+  const ankle = results.poseLandmarks[27];
+
+  const angle = calculateAngle(hip, knee, ankle);
+
+  // Calibration phase
+  if (!exerciseStarted) {
+    calibrationFrames++;
+    if (standingAngle === null) standingAngle = 0;
+    standingAngle += angle;
+
+    statusText.innerText = `Calibration: Stand straight (${calibrationFrames}/${CALIBRATION_REQUIRED})`;
+
+    if (calibrationFrames >= CALIBRATION_REQUIRED) {
+      standingAngle = standingAngle / CALIBRATION_REQUIRED;
+      startBtn.disabled = false;
+      statusText.innerText = "Calibration done. Press Start!";
+    }
+    return;
   }
 
-  const pose = new Pose({
-    locateFile: file =>
-      `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-  });
+  // Only start counting if exerciseStarted = true
+  const DOWN_THRESHOLD = standingAngle - 50; // adjust as needed
+  const UP_THRESHOLD = standingAngle - 10;
 
-  pose.setOptions({
-    modelComplexity: 1,
-    smoothLandmarks: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
-  });
-
-  pose.onResults(results => {
-    if (!results.poseLandmarks) return;
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw skeleton
-    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, { color: "#00FF00", lineWidth: 4 });
-    drawLandmarks(ctx, results.poseLandmarks, { color: "#FF0000", lineWidth: 2 });
-
-    // LEFT LEG
-    const hip = results.poseLandmarks[23];
-    const knee = results.poseLandmarks[25];
-    const ankle = results.poseLandmarks[27];
-
-    const angle = calculateAngle(hip, knee, ankle);
-
-    // DEBUG
-    statusText.innerText = `Angle: ${angle.toFixed(0)}`;
-
-    // DOWN detection (stable)
-    if (angle < 150) {
-      downFrameCount++;
-    } else {
-      downFrameCount = 0;
-    }
-
-    if (downFrameCount >= DOWN_FRAME_REQUIRED && stage === "up") {
-      stage = "down";
-    }
-
-    // UP + COUNT
-    if (angle > 165 && stage === "down") {
-      stage = "up";
-      count++;
-      countText.innerText = count;
-    }
-  });
-
-  const camera = new Camera(video, {
-    onFrame: async () => {
-      await pose.send({ image: video });
-    },
-    width: 640,
-    height: 480
-  });
-
-  camera.start();
-
-  function closeExercise() {
-    window.location.href = "index.html";
+  // DOWN detection (stable)
+  if (angle < DOWN_THRESHOLD) {
+    downFrameCount++;
+  } else {
+    downFrameCount = 0;
   }
+
+  if (downFrameCount >= DOWN_FRAME_REQUIRED && stage === "up") {
+    stage = "down";
+  }
+
+  // UP + COUNT
+  if (angle > UP_THRESHOLD && stage === "down") {
+    stage = "up";
+    count++;
+    countText.innerText = count;
+  }
+
+  // Status text
+  statusText.innerText = `Angle: ${angle.toFixed(0)} | Stage: ${stage}`;
+});
+
+// Camera
+const camera = new Camera(video, {
+  onFrame: async () => { await pose.send({ image: video }); },
+  width: 640,
+  height: 480
+});
+camera.start();
+
+// Start button
+startBtn.addEventListener("click", () => {
+  exerciseStarted = true;
+  statusText.innerText = "Exercise started!";
+});
+
+// Close button
+function closeExercise() {
+  window.location.href = "index.html";
+}
 </script>
 
 </body>

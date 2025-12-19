@@ -1,52 +1,35 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Chair Squat</title>
+  <title>Chair Squat Counter</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- MediaPipe -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
 
   <style>
-    body {
-      margin: 0;
-      background: #111;
-      color: white;
-      font-family: Arial;
-      text-align: center;
-    }
-    .header { font-size: 22px; padding: 10px; }
-    .counter { font-size: 72px; color: #00ff99; }
-    .status { font-size: 20px; color: #ffd700; }
-    .container { position: relative; }
-    video, canvas { width: 100%; max-height: 55vh; }
-    canvas { position: absolute; left: 0; top: 0; }
-    button {
-      margin: 10px;
-      padding: 12px 25px;
-      font-size: 18px;
-      background: red;
-      color: white;
-      border: none;
-      border-radius: 8px;
-    }
+    body { margin:0; background:#111; color:white; font-family:Arial; text-align:center; }
+    .header { font-size:22px; padding:10px; }
+    .counter { font-size:72px; color:#00ff99; }
+    .status { font-size:20px; color:#ffd700; }
+    .container { position:relative; }
+    video, canvas { width:100%; max-height:55vh; }
+    canvas { position:absolute; left:0; top:0; }
+    button { margin:10px; padding:12px 25px; font-size:18px; background:red; color:white; border:none; border-radius:8px; }
   </style>
 </head>
 
 <body>
-
   <div class="header">Chair Squat</div>
   <div class="counter" id="count">0</div>
-  <div class="status" id="status">Calibration: Stand straight</div>
+  <div class="status" id="status">Stand straight</div>
 
   <div class="container">
     <video id="video" autoplay playsinline></video>
     <canvas id="canvas"></canvas>
   </div>
 
-  <button id="startBtn" disabled>Start Exercise</button>
   <button onclick="closeExercise()">Close</button>
 
 <script>
@@ -55,18 +38,9 @@ const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const countText = document.getElementById("count");
 const statusText = document.getElementById("status");
-const startBtn = document.getElementById("startBtn");
 
 let count = 0;
 let stage = "up";
-let downFrameCount = 0;
-const DOWN_FRAME_REQUIRED = 10;
-
-// Calibration
-let calibrationFrames = 0;
-const CALIBRATION_REQUIRED = 30; // ~1 second at 30fps
-let standingAngle = null;
-let exerciseStarted = false;
 
 function calculateAngle(a, b, c) {
   const ab = Math.hypot(a.x - b.x, a.y - b.y);
@@ -75,96 +49,43 @@ function calculateAngle(a, b, c) {
   return Math.acos((ab*ab + bc*bc - ac*ac) / (2*ab*bc)) * (180 / Math.PI);
 }
 
-const pose = new Pose({
-  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-});
-
-pose.setOptions({
-  modelComplexity: 1,
-  smoothLandmarks: true,
-  minDetectionConfidence: 0.5,
-  minTrackingConfidence: 0.5
-});
+const pose = new Pose({ locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+pose.setOptions({ modelComplexity:1, smoothLandmarks:true, minDetectionConfidence:0.5, minTrackingConfidence:0.5 });
 
 pose.onResults(results => {
-  if (!results.poseLandmarks) return;
+  if(!results.poseLandmarks) return;
 
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // Draw skeleton
-  drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, { color: "#00FF00", lineWidth: 4 });
-  drawLandmarks(ctx, results.poseLandmarks, { color: "#FF0000", lineWidth: 2 });
+  drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {color:"#00FF00", lineWidth:4});
+  drawLandmarks(ctx, results.poseLandmarks, {color:"#FF0000", lineWidth:2});
 
-  // LEFT LEG
+  // LEFT LEG landmarks
   const hip = results.poseLandmarks[23];
   const knee = results.poseLandmarks[25];
   const ankle = results.poseLandmarks[27];
 
   const angle = calculateAngle(hip, knee, ankle);
 
-  // Calibration phase
-  if (!exerciseStarted) {
-    calibrationFrames++;
-    if (standingAngle === null) standingAngle = 0;
-    standingAngle += angle;
-
-    statusText.innerText = `Calibration: Stand straight (${calibrationFrames}/${CALIBRATION_REQUIRED})`;
-
-    if (calibrationFrames >= CALIBRATION_REQUIRED) {
-      standingAngle = standingAngle / CALIBRATION_REQUIRED;
-      startBtn.disabled = false;
-      statusText.innerText = "Calibration done. Press Start!";
-    }
-    return;
-  }
-
-  // Only start counting if exerciseStarted = true
-  const DOWN_THRESHOLD = standingAngle - 50; // adjust as needed
-  const UP_THRESHOLD = standingAngle - 10;
-
-  // DOWN detection (stable)
-  if (angle < DOWN_THRESHOLD) {
-    downFrameCount++;
-  } else {
-    downFrameCount = 0;
-  }
-
-  if (downFrameCount >= DOWN_FRAME_REQUIRED && stage === "up") {
+  // STAGE LOGIC
+  if(angle < 140 && stage === "up") {
     stage = "down";
   }
-
-  // UP + COUNT
-  if (angle > UP_THRESHOLD && stage === "down") {
+  if(angle > 165 && stage === "down") {
     stage = "up";
     count++;
     countText.innerText = count;
   }
 
-  // Status text
   statusText.innerText = `Angle: ${angle.toFixed(0)} | Stage: ${stage}`;
 });
 
-// Camera
-const camera = new Camera(video, {
-  onFrame: async () => { await pose.send({ image: video }); },
-  width: 640,
-  height: 480
-});
+const camera = new Camera(video, { onFrame: async()=>{await pose.send({image:video})}, width:640, height:480 });
 camera.start();
 
-// Start button
-startBtn.addEventListener("click", () => {
-  exerciseStarted = true;
-  statusText.innerText = "Exercise started!";
-});
-
-// Close button
-function closeExercise() {
-  window.location.href = "index.html";
-}
+function closeExercise(){ window.location.href="index.html"; }
 </script>
-
 </body>
 </html>

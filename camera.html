@@ -1,35 +1,88 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Squat Monitor</title>
+  <title>Chair Squat</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- MediaPipe -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
 
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: white;
+      text-align: center;
+    }
+
+    .header {
+      padding: 15px;
+      font-size: 22px;
+      font-weight: bold;
+      background: #000;
+    }
+
+    .counter {
+      font-size: 72px;
+      font-weight: bold;
+      margin: 10px 0;
+      color: #00ff99;
+    }
+
+    .target {
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+
+    .status {
+      font-size: 22px;
+      margin-bottom: 10px;
+      color: #ffd700;
+    }
+
+    video {
+      width: 100%;
+      height: auto;
+      max-height: 55vh;
+      border-radius: 10px;
+    }
+
+    .btn {
+      margin: 15px;
+      padding: 15px 30px;
+      font-size: 20px;
+      border: none;
+      border-radius: 10px;
+      background: red;
+      color: white;
+    }
+  </style>
 </head>
+
 <body>
 
-  <h2>Chair Squat</h2>
+  <div class="header">Chair Squat</div>
 
-  <h3 id="count">0</h3>
-  <p id="status">Start Squatting</p>
+  <div class="counter" id="count">0</div>
+  <div class="target">Target: <span id="targetText"></span></div>
+  <div class="status" id="status">Start Squatting</div>
 
-<video id="video" autoplay playsinline
-       style="width:100%; height:auto;"></video>
+  <video id="video" autoplay playsinline></video>
 
-  <br><br>
-  <button onclick="closeExercise()">Close</button>
+  <button class="btn" onclick="closeExercise()">Close</button>
 
 <script>
   const video = document.getElementById("video");
   const countText = document.getElementById("count");
   const statusText = document.getElementById("status");
+  const targetText = document.getElementById("targetText");
 
   let count = 0;
   let state = "up";
-  const target = localStorage.getItem("target");
+  const target = Number(localStorage.getItem("target"));
+  targetText.innerText = target;
 
   function calculateAngle(a, b, c) {
     const ab = Math.hypot(a.x - b.x, a.y - b.y);
@@ -39,9 +92,8 @@
   }
 
   const pose = new Pose({
-    locateFile: (file) => {
-      return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
-    }
+    locateFile: file =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
   });
 
   pose.setOptions({
@@ -62,12 +114,14 @@
 
     if (angle < 90 && state === "up") {
       state = "down";
+      statusText.innerText = "Down";
     }
 
     if (angle > 160 && state === "down") {
       count++;
       state = "up";
       countText.innerText = count;
+      statusText.innerText = "Up";
     }
 
     if (count >= target) {
@@ -75,13 +129,13 @@
     }
   });
 
- const camera = new Camera(video, {
-  onFrame: async () => {
-    await pose.send({ image: video });
-  },
-  width: 640,
-  height: 480
-});
+  const camera = new Camera(video, {
+    onFrame: async () => {
+      await pose.send({ image: video });
+    },
+    width: 640,
+    height: 480
+  });
 
   camera.start();
 

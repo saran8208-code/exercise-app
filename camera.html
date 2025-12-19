@@ -4,59 +4,44 @@
   <title>Chair Squat</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- MediaPipe -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
 
   <style>
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
       background: #111;
       color: white;
+      font-family: Arial;
       text-align: center;
     }
-
     .header {
       padding: 15px;
       font-size: 22px;
       font-weight: bold;
-      background: black;
     }
-
     .counter {
       font-size: 72px;
-      font-weight: bold;
       color: #00ff99;
-      margin: 10px 0;
     }
-
-    .target {
-      font-size: 20px;
-      margin-bottom: 5px;
-    }
-
     .status {
       font-size: 22px;
       color: #ffd700;
       margin-bottom: 10px;
     }
-
     video {
       width: 100%;
-      height: auto;
       max-height: 55vh;
       border-radius: 10px;
     }
-
-    .btn {
-      margin: 15px;
+    button {
       padding: 15px 30px;
       font-size: 20px;
-      border: none;
-      border-radius: 10px;
       background: red;
       color: white;
+      border: none;
+      border-radius: 10px;
+      margin: 15px;
     }
   </style>
 </head>
@@ -64,41 +49,31 @@
 <body>
 
   <div class="header">Chair Squat</div>
-
   <div class="counter" id="count">0</div>
-  <div class="target">Target: <span id="targetText"></span></div>
-  <div class="status" id="status">Stand straight to start</div>
+  <div class="status" id="status">Stand still</div>
 
   <video id="video" autoplay playsinline></video>
-
-  <button class="btn" onclick="closeExercise()">Close</button>
+  <button onclick="closeExercise()">Close</button>
 
 <script>
   const video = document.getElementById("video");
   const countText = document.getElementById("count");
   const statusText = document.getElementById("status");
-  const targetText = document.getElementById("targetText");
 
   let count = 0;
   let state = "up";
-
-  const target = Number(localStorage.getItem("target"));
-  targetText.innerText = target;
-
-  // --- SAFETY VARIABLES ---
   let lastCountTime = 0;
-  const COOLDOWN = 1200; // milliseconds
 
-  let downFrames = 0;
-  const REQUIRED_DOWN_FRAMES = 8;
+  const COOLDOWN = 1500; // ms
+  const MIN_HIP_DROP = 0.04; // IMPORTANT threshold
 
-  let lastHipY = null;
+  let referenceDiff = null;
 
   function calculateAngle(a, b, c) {
     const ab = Math.hypot(a.x - b.x, a.y - b.y);
     const bc = Math.hypot(b.x - c.x, b.y - c.y);
     const ac = Math.hypot(a.x - c.x, a.y - c.y);
-    return Math.acos((ab * ab + bc * bc - ac * ac) / (2 * ab * bc)) * (180 / Math.PI);
+    return Math.acos((ab*ab + bc*bc - ac*ac) / (2*ab*bc)) * (180 / Math.PI);
   }
 
   const pose = new Pose({
@@ -109,40 +84,46 @@
   pose.setOptions({
     modelComplexity: 1,
     smoothLandmarks: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6
   });
 
   pose.onResults(results => {
     if (!results.poseLandmarks) return;
 
-    const hip = results.poseLandmarks[23];   // left hip
-    const knee = results.poseLandmarks[25];  // left knee
-    const ankle = results.poseLandmarks[27]; // left ankle
+    const shoulder = results.poseLandmarks[11]; // left shoulder
+    const hip = results.poseLandmarks[23];
+    const knee = results.poseLandmarks[25];
+    const ankle = results.poseLandmarks[27];
 
     const angle = calculateAngle(hip, knee, ankle);
     const now = Date.now();
 
-    // Track hip vertical movement (REAL movement)
-    if (lastHipY === null) lastHipY = hip.y;
-    const hipMovement = Math.abs(hip.y - lastHipY);
-    lastHipY = hip.y;
+    // Relative distance (camera shake safe)
+    const diff = hip.y - shoulder.y;
 
-    // ----- DOWN POSITION -----
-    if (angle < 95 && hipMovement > 0.01) {
-      downFrames++;
-      if (downFrames >= REQUIRED_DOWN_FRAMES && state === "up") {
-        state = "down";
-        statusText.innerText = "Down";
-      }
-    } else {
-      downFrames = 0;
+    // Save standing reference
+    if (referenceDiff === null && angle > 165) {
+      referenceDiff = diff;
+      statusText.innerText = "Ready";
+      return;
     }
 
-    // ----- UP POSITION + COUNT -----
+    // DOWN
     if (
-      angle > 165 &&
+      referenceDiff !== null &&
+      diff - referenceDiff > MIN_HIP_DROP &&
+      angle < 100 &&
+      state === "up"
+    ) {
+      state = "down";
+      statusText.innerText = "Down";
+    }
+
+    // UP + COUNT
+    if (
       state === "down" &&
+      angle > 165 &&
       now - lastCountTime > COOLDOWN
     ) {
       count++;
@@ -150,11 +131,6 @@
       state = "up";
       countText.innerText = count;
       statusText.innerText = "Up";
-    }
-
-    // ----- TARGET DONE -----
-    if (count >= target) {
-      statusText.innerText = "Target Completed 🎉";
     }
   });
 

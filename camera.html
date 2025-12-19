@@ -1,58 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Chair Squat</title>
+  <title>Squat Monitor</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+  <!-- MediaPipe -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
 
-  <style>
-    body {
-      margin: 0;
-      background: #111;
-      color: white;
-      font-family: Arial;
-      text-align: center;
-    }
-    .header {
-      padding: 15px;
-      font-size: 22px;
-      font-weight: bold;
-    }
-    .counter {
-      font-size: 72px;
-      color: #00ff99;
-    }
-    .status {
-      font-size: 22px;
-      color: #ffd700;
-      margin-bottom: 10px;
-    }
-    video {
-      width: 100%;
-      max-height: 55vh;
-      border-radius: 10px;
-    }
-    button {
-      padding: 15px 30px;
-      font-size: 20px;
-      background: red;
-      color: white;
-      border: none;
-      border-radius: 10px;
-      margin: 15px;
-    }
-  </style>
 </head>
-
 <body>
 
-  <div class="header">Chair Squat</div>
-  <div class="counter" id="count">0</div>
-  <div class="status" id="status">Stand straight</div>
+  <h2>Chair Squat</h2>
 
-  <video id="video" autoplay playsinline></video>
+  <h3 id="count">0</h3>
+  <p id="status">Start Squatting</p>
+
+  <video id="video" autoplay playsinline
+       style="width:100%; height:auto;"></video>
+
+
+  <br><br>
   <button onclick="closeExercise()">Close</button>
 
 <script>
@@ -62,29 +30,26 @@
 
   let count = 0;
   let state = "up";
-  let lastCountTime = 0;
-
-  const COOLDOWN = 1200;
-
-  let standingDiff = null;
+  const target = localStorage.getItem("target");
 
   function calculateAngle(a, b, c) {
     const ab = Math.hypot(a.x - b.x, a.y - b.y);
     const bc = Math.hypot(b.x - c.x, b.y - c.y);
     const ac = Math.hypot(a.x - c.x, a.y - c.y);
-    return Math.acos((ab*ab + bc*bc - ac*ac) / (2*ab*bc)) * (180 / Math.PI);
+    return Math.acos((ab*ab + bc*bc - ac*ac) / (2 * ab * bc)) * (180 / Math.PI);
   }
 
   const pose = new Pose({
-    locateFile: file =>
-      `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    locateFile: (file) => {
+      return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
+    }
   });
 
   pose.setOptions({
     modelComplexity: 1,
     smoothLandmarks: true,
-    minDetectionConfidence: 0.6,
-    minTrackingConfidence: 0.6
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
   });
 
   pose.onResults(results => {
@@ -95,49 +60,29 @@
     const ankle = results.poseLandmarks[27];
 
     const angle = calculateAngle(hip, knee, ankle);
-    const now = Date.now();
 
-    // Hip relative to knee (shake resistant)
-    const diff = hip.y - knee.y;
-
-    // Save standing reference
-    if (standingDiff === null && angle > 165) {
-      standingDiff = diff;
-      statusText.innerText = "Ready";
-      return;
-    }
-
-    // DOWN position
-    if (
-      state === "up" &&
-      angle < 110 &&
-      diff - standingDiff > 0.025
-    ) {
+    if (angle < 90 && state === "up") {
       state = "down";
-      statusText.innerText = "Down";
     }
 
-    // UP position + COUNT
-    if (
-      state === "down" &&
-      angle > 165 &&
-      now - lastCountTime > COOLDOWN
-    ) {
+    if (angle > 160 && state === "down") {
       count++;
-      lastCountTime = now;
       state = "up";
       countText.innerText = count;
-      statusText.innerText = "Up";
+    }
+
+    if (count >= target) {
+      statusText.innerText = "Target Completed 🎉";
     }
   });
 
-  const camera = new Camera(video, {
-    onFrame: async () => {
-      await pose.send({ image: video });
-    },
-    width: 640,
-    height: 480
-  });
+ const camera = new Camera(video, {
+  onFrame: async () => {
+    await pose.send({ image: video });
+  },
+  width: 640,
+  height: 480
+});
 
   camera.start();
 

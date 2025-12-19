@@ -1,91 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Squat Monitor</title>
+  <title>Select Exercise</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- MediaPipe -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils"></script>
-
 </head>
 <body>
 
-  <h2>Chair Squat</h2>
+  <h2>Choose Exercise</h2>
 
-  <h3 id="count">0</h3>
-  <p id="status">Start Squatting</p>
+  <p>Exercise: <b>Chair Squat</b></p>
 
-  <video id="video" width="300" height="300" autoplay></video>
+  <label>Target Count:</label>
+  <input type="number" id="target" placeholder="Enter count" />
 
   <br><br>
-  <button onclick="closeExercise()">Close</button>
 
-<script>
-  const video = document.getElementById("video");
-  const countText = document.getElementById("count");
-  const statusText = document.getElementById("status");
+  <button onclick="startExercise()">Start</button>
 
-  let count = 0;
-  let state = "up";
-  const target = localStorage.getItem("target");
+ <script>
+  function startExercise() {
+    const target = document.getElementById("target").value;
 
-  function calculateAngle(a, b, c) {
-    const ab = Math.hypot(a.x - b.x, a.y - b.y);
-    const bc = Math.hypot(b.x - c.x, b.y - c.y);
-    const ac = Math.hypot(a.x - c.x, a.y - c.y);
-    return Math.acos((ab*ab + bc*bc - ac*ac) / (2 * ab * bc)) * (180 / Math.PI);
-  }
-
-  const pose = new Pose({
-    locateFile: (file) => {
-      return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
-    }
-  });
-
-  pose.setOptions({
-    modelComplexity: 1,
-    smoothLandmarks: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
-  });
-
-  pose.onResults(results => {
-    if (!results.poseLandmarks) return;
-
-    const hip = results.poseLandmarks[23];
-    const knee = results.poseLandmarks[25];
-    const ankle = results.poseLandmarks[27];
-
-    const angle = calculateAngle(hip, knee, ankle);
-
-    if (angle < 90 && state === "up") {
-      state = "down";
+    if (!target || target <= 0) {
+      alert("Please enter valid target count");
+      return;
     }
 
-    if (angle > 160 && state === "down") {
-      count++;
-      state = "up";
-      countText.innerText = count;
-    }
-
-    if (count >= target) {
-      statusText.innerText = "Target Completed 🎉";
-    }
-  });
-
-  const camera = new Camera(video, {
-    onFrame: async () => {
-      await pose.send({ image: video });
-    },
-    width: 300,
-    height: 300
-  });
-
-  camera.start();
-
-  function closeExercise() {
-    window.location.href = "index.html";
+    localStorage.setItem("target", target);
+    window.location.href = "camera.html";
   }
 </script>
 

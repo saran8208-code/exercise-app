@@ -69,11 +69,11 @@ pose.onResults(results => {
 
   const angle = calculateAngle(hip, knee, ankle);
 
-  // STAGE LOGIC
-  if(angle < 140 && stage === "up") {
+  // STAGE LOGIC with updated DOWN_THRESHOLD 150
+  if(angle < 150 && stage === "up") {  // down detected below 150
     stage = "down";
   }
-  if(angle > 165 && stage === "down") {
+  if(angle > 165 && stage === "down") {  // up detected above 165
     stage = "up";
     count++;
     countText.innerText = count;

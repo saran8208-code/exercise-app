@@ -17,28 +17,13 @@
       font-family: Arial;
       text-align: center;
     }
-    .header {
-      padding: 15px;
-      font-size: 22px;
-      font-weight: bold;
-    }
-    .counter {
-      font-size: 72px;
-      color: #00ff99;
-    }
-    .status {
-      font-size: 22px;
-      color: #ffd700;
-      margin-bottom: 10px;
-    }
-    .container {
-      position: relative;
-      width: 100%;
-    }
+    .header { font-size: 22px; padding: 10px; }
+    .counter { font-size: 72px; color: #00ff99; }
+    .status { font-size: 20px; color: #ffd700; }
+    .container { position: relative; }
     video, canvas {
       width: 100%;
       max-height: 55vh;
-      border-radius: 10px;
     }
     canvas {
       position: absolute;
@@ -46,13 +31,13 @@
       top: 0;
     }
     button {
+      margin: 15px;
       padding: 15px 30px;
       font-size: 20px;
       background: red;
       color: white;
       border: none;
       border-radius: 10px;
-      margin: 15px;
     }
   </style>
 </head>
@@ -79,11 +64,7 @@
   const statusText = document.getElementById("status");
 
   let count = 0;
-  let state = "up";
-  let lastCountTime = 0;
-  const COOLDOWN = 1200;
-
-  let standingDiff = null;
+  let stage = "up";
 
   function calculateAngle(a, b, c) {
     const ab = Math.hypot(a.x - b.x, a.y - b.y);
@@ -100,63 +81,42 @@
   pose.setOptions({
     modelComplexity: 1,
     smoothLandmarks: true,
-    minDetectionConfidence: 0.6,
-    minTrackingConfidence: 0.6
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
   });
 
   pose.onResults(results => {
     if (!results.poseLandmarks) return;
 
-    // Resize canvas to video size
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw skeleton
     drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS,
       { color: "#00FF00", lineWidth: 4 });
     drawLandmarks(ctx, results.poseLandmarks,
       { color: "#FF0000", lineWidth: 2 });
 
-    // Squat detection landmarks (LEFT side)
+    // LEFT LEG ONLY
     const hip = results.poseLandmarks[23];
     const knee = results.poseLandmarks[25];
     const ankle = results.poseLandmarks[27];
 
     const angle = calculateAngle(hip, knee, ankle);
-    const now = Date.now();
 
-    const diff = hip.y - knee.y;
-
-    // Calibrate standing position
-    if (standingDiff === null && angle > 165) {
-      standingDiff = diff;
-      statusText.innerText = "Ready";
-      return;
-    }
+    // DEBUG TEXT (VERY IMPORTANT)
+    statusText.innerText = `Angle: ${angle.toFixed(0)}`;
 
     // DOWN
-    if (
-      state === "up" &&
-      angle < 110 &&
-      diff - standingDiff > 0.025
-    ) {
-      state = "down";
-      statusText.innerText = "Down";
+    if (angle < 100 && stage === "up") {
+      stage = "down";
     }
 
     // UP + COUNT
-    if (
-      state === "down" &&
-      angle > 165 &&
-      now - lastCountTime > COOLDOWN
-    ) {
+    if (angle > 160 && stage === "down") {
+      stage = "up";
       count++;
-      lastCountTime = now;
-      state = "up";
       countText.innerText = count;
-      statusText.innerText = "Up";
     }
   });
 

@@ -16,7 +16,8 @@
   <h3 id="count">0</h3>
   <p id="status">Start Squatting</p>
 
-  <video id="video" width="300" height="300" autoplay></video>
+<video id="video" autoplay playsinline
+       style="width:100%; height:auto;"></video>
 
   <br><br>
   <button onclick="closeExercise()">Close</button>
@@ -74,13 +75,13 @@
     }
   });
 
-  const camera = new Camera(video, {
-    onFrame: async () => {
-      await pose.send({ image: video });
-    },
-    width: 300,
-    height: 300
-  });
+ const camera = new Camera(video, {
+  onFrame: async () => {
+    await pose.send({ image: video });
+  },
+  width: 640,
+  height: 480
+});
 
   camera.start();
 

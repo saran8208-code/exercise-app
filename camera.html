@@ -21,25 +21,25 @@
       padding: 15px;
       font-size: 22px;
       font-weight: bold;
-      background: #000;
+      background: black;
     }
 
     .counter {
       font-size: 72px;
       font-weight: bold;
-      margin: 10px 0;
       color: #00ff99;
+      margin: 10px 0;
     }
 
     .target {
       font-size: 20px;
-      margin-bottom: 10px;
+      margin-bottom: 5px;
     }
 
     .status {
       font-size: 22px;
-      margin-bottom: 10px;
       color: #ffd700;
+      margin-bottom: 10px;
     }
 
     video {
@@ -67,7 +67,7 @@
 
   <div class="counter" id="count">0</div>
   <div class="target">Target: <span id="targetText"></span></div>
-  <div class="status" id="status">Start Squatting</div>
+  <div class="status" id="status">Stand straight to start</div>
 
   <video id="video" autoplay playsinline></video>
 
@@ -81,14 +81,24 @@
 
   let count = 0;
   let state = "up";
+
   const target = Number(localStorage.getItem("target"));
   targetText.innerText = target;
+
+  // --- SAFETY VARIABLES ---
+  let lastCountTime = 0;
+  const COOLDOWN = 1200; // milliseconds
+
+  let downFrames = 0;
+  const REQUIRED_DOWN_FRAMES = 8;
+
+  let lastHipY = null;
 
   function calculateAngle(a, b, c) {
     const ab = Math.hypot(a.x - b.x, a.y - b.y);
     const bc = Math.hypot(b.x - c.x, b.y - c.y);
     const ac = Math.hypot(a.x - c.x, a.y - c.y);
-    return Math.acos((ab*ab + bc*bc - ac*ac) / (2 * ab * bc)) * (180 / Math.PI);
+    return Math.acos((ab * ab + bc * bc - ac * ac) / (2 * ab * bc)) * (180 / Math.PI);
   }
 
   const pose = new Pose({
@@ -106,24 +116,43 @@
   pose.onResults(results => {
     if (!results.poseLandmarks) return;
 
-    const hip = results.poseLandmarks[23];
-    const knee = results.poseLandmarks[25];
-    const ankle = results.poseLandmarks[27];
+    const hip = results.poseLandmarks[23];   // left hip
+    const knee = results.poseLandmarks[25];  // left knee
+    const ankle = results.poseLandmarks[27]; // left ankle
 
     const angle = calculateAngle(hip, knee, ankle);
+    const now = Date.now();
 
-    if (angle < 90 && state === "up") {
-      state = "down";
-      statusText.innerText = "Down";
+    // Track hip vertical movement (REAL movement)
+    if (lastHipY === null) lastHipY = hip.y;
+    const hipMovement = Math.abs(hip.y - lastHipY);
+    lastHipY = hip.y;
+
+    // ----- DOWN POSITION -----
+    if (angle < 95 && hipMovement > 0.01) {
+      downFrames++;
+      if (downFrames >= REQUIRED_DOWN_FRAMES && state === "up") {
+        state = "down";
+        statusText.innerText = "Down";
+      }
+    } else {
+      downFrames = 0;
     }
 
-    if (angle > 160 && state === "down") {
+    // ----- UP POSITION + COUNT -----
+    if (
+      angle > 165 &&
+      state === "down" &&
+      now - lastCountTime > COOLDOWN
+    ) {
       count++;
+      lastCountTime = now;
       state = "up";
       countText.innerText = count;
       statusText.innerText = "Up";
     }
 
+    // ----- TARGET DONE -----
     if (count >= target) {
       statusText.innerText = "Target Completed 🎉";
     }

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Exercise Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+
+  <h2>Select Date</h2>
+
+  <input type="date" id="date" />
+
+  <br><br>
+
+  <button onclick="goNext()">Next</button>
+
+  <script>
+    function goNext() {
+      const date = document.getElementById("date").value;
+      if (!date) {
+        alert("Please select a date");
+        return;
+      }
+      localStorage.setItem("date", date);
+      window.location.href = "exercise.html";
+    }
+  </script>
+
+</body>
+</html>

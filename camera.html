@@ -21,15 +21,8 @@
     .counter { font-size: 72px; color: #00ff99; }
     .status { font-size: 20px; color: #ffd700; }
     .container { position: relative; }
-    video, canvas {
-      width: 100%;
-      max-height: 55vh;
-    }
-    canvas {
-      position: absolute;
-      left: 0;
-      top: 0;
-    }
+    video, canvas { width: 100%; max-height: 55vh; }
+    canvas { position: absolute; left: 0; top: 0; }
     button {
       margin: 15px;
       padding: 15px 30px;
@@ -66,6 +59,10 @@
   let count = 0;
   let stage = "up";
 
+  // For stable detection
+  let downFrameCount = 0;
+  const DOWN_FRAME_REQUIRED = 10;
+
   function calculateAngle(a, b, c) {
     const ab = Math.hypot(a.x - b.x, a.y - b.y);
     const bc = Math.hypot(b.x - c.x, b.y - c.y);
@@ -92,28 +89,33 @@
     canvas.height = video.videoHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS,
-      { color: "#00FF00", lineWidth: 4 });
-    drawLandmarks(ctx, results.poseLandmarks,
-      { color: "#FF0000", lineWidth: 2 });
+    // Draw skeleton
+    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, { color: "#00FF00", lineWidth: 4 });
+    drawLandmarks(ctx, results.poseLandmarks, { color: "#FF0000", lineWidth: 2 });
 
-    // LEFT LEG ONLY
+    // LEFT LEG
     const hip = results.poseLandmarks[23];
     const knee = results.poseLandmarks[25];
     const ankle = results.poseLandmarks[27];
 
     const angle = calculateAngle(hip, knee, ankle);
 
-    // DEBUG TEXT (VERY IMPORTANT)
+    // DEBUG
     statusText.innerText = `Angle: ${angle.toFixed(0)}`;
 
-    // DOWN
-    if (angle < 100 && stage === "up") {
+    // DOWN detection (stable)
+    if (angle < 150) {
+      downFrameCount++;
+    } else {
+      downFrameCount = 0;
+    }
+
+    if (downFrameCount >= DOWN_FRAME_REQUIRED && stage === "up") {
       stage = "down";
     }
 
     // UP + COUNT
-    if (angle > 160 && stage === "down") {
+    if (angle > 165 && stage === "down") {
       stage = "up";
       count++;
       countText.innerText = count;

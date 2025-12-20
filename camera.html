@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Exercise Camera</title>
+  <title>Chair Squat Counter</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- TensorFlow -->
@@ -11,33 +11,32 @@
   <style>
     body {
       margin: 0;
-      background: #111;
+      background: black;
       color: white;
       font-family: Arial;
       text-align: center;
     }
     h2 { margin: 10px; }
-    #counterText {
-      font-size: 42px;
+    #count {
+      font-size: 60px;
       color: #00ff99;
-      margin: 10px;
     }
     video, canvas {
       width: 100%;
-      max-height: 60vh;
+      max-height: 65vh;
     }
     canvas {
       position: absolute;
       top: 0;
       left: 0;
     }
-    .container {
+    .box {
       position: relative;
     }
     button {
-      margin: 15px;
       padding: 15px 30px;
-      font-size: 18px;
+      font-size: 20px;
+      margin: 15px;
       background: red;
       color: white;
       border: none;
@@ -48,54 +47,26 @@
 
 <body>
 
-<h2 id="exerciseTitle">Exercise</h2>
-<div id="counterText">Count: 0</div>
+<h2>Chair Squat</h2>
+<div id="count">0</div>
 
-<div class="container">
+<div class="box">
   <video id="video" autoplay playsinline></video>
-  <canvas id="output"></canvas>
+  <canvas id="canvas"></canvas>
 </div>
 
-<button onclick="stopExercise()">Stop</button>
+<button onclick="stopCamera()">STOP</button>
 
 <script>
-/* -------------------------------------------------
-   VARIABLES (FROM YOUR PROJECT)
-------------------------------------------------- */
-const video = document.getElementById("video");
-const canvas = document.getElementById("output");
-const ctx = canvas.getContext("2d");
-const counterText = document.getElementById("counterText");
+let video = document.getElementById("video");
+let canvas = document.getElementById("canvas");
+let ctx = canvas.getContext("2d");
 
 let detector;
 let count = 0;
+let stage = "up";
 
-// You already store these before opening camera page
-const selectedExercise = localStorage.getItem("selectedExercise");
-const targetCount = parseInt(localStorage.getItem("targetCount")) || 10;
-
-document.getElementById("exerciseTitle").innerText =
-  selectedExercise.toUpperCase();
-
-/* -------------------------------------------------
-   STATES (RESET SAFE)
-------------------------------------------------- */
-let squatState = "up";
-let leftUp = false;
-let rightUp = false;
-let inAir = false;
-let plankTimer = 0;
-
-// Squat readiness gate
-let readyForSquat = false;
-let standFrames = 0;
-const STAND_ANGLE = 165;
-const DOWN_ANGLE = 145;
-const STAND_FRAMES_REQUIRED = 25;
-
-/* -------------------------------------------------
-   CAMERA START
-------------------------------------------------- */
+// -------- CAMERA START --------
 async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: "user" }
@@ -115,32 +86,8 @@ async function startCamera() {
   detectPose();
 }
 
-startCamera();
-
-/* -------------------------------------------------
-   MAIN LOOP
-------------------------------------------------- */
-async function detectPose() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  const poses = await detector.estimatePoses(video);
-  if (poses.length > 0) {
-    const kp = poses[0].keypoints;
-
-    if (selectedExercise === "squat") runSquat(kp);
-    if (selectedExercise === "kneehug") runKneeHug(kp);
-    if (selectedExercise === "longjump") runLongJump(kp);
-    if (selectedExercise === "plank") runPlank(kp);
-  }
-
-  requestAnimationFrame(detectPose);
-}
-
-/* -------------------------------------------------
-   ANGLE CALCULATION (FIXED)
-------------------------------------------------- */
-function calculateAngle(a, b, c) {
+// -------- ANGLE --------
+function getAngle(a, b, c) {
   const ab = Math.hypot(a.x - b.x, a.y - b.y);
   const bc = Math.hypot(b.x - c.x, b.y - c.y);
   const ac = Math.hypot(a.x - c.x, a.y - c.y);
@@ -150,124 +97,49 @@ function calculateAngle(a, b, c) {
   ) * (180 / Math.PI);
 }
 
-/* -------------------------------------------------
-   CHAIR SQUAT (REAL DETECTION)
-------------------------------------------------- */
-function runSquat(kp) {
-  const hip = kp[11];
-  const knee = kp[13];
-  const ankle = kp[15];
+// -------- MAIN LOOP --------
+async function detectPose() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  if (hip.score < 0.5 || knee.score < 0.5 || ankle.score < 0.5) return;
+  const poses = await detector.estimatePoses(video);
+  if (poses.length > 0) {
+    const kp = poses[0].keypoints;
 
-  const angle = calculateAngle(hip, knee, ankle);
+    const hip = kp[11];    // left hip
+    const knee = kp[13];  // left knee
+    const ankle = kp[15]; // left ankle
 
-  // Gate 1: stand still first
-  if (!readyForSquat) {
-    counterText.innerText = "Stand straight...";
-    if (angle > STAND_ANGLE) {
-      standFrames++;
-      if (standFrames >= STAND_FRAMES_REQUIRED) {
-        readyForSquat = true;
+    if (hip.score > 0.5 && knee.score > 0.5 && ankle.score > 0.5) {
+      const angle = getAngle(hip, knee, ankle);
+
+      // DOWN
+      if (angle < 145 && stage === "up") {
+        stage = "down";
       }
-    } else {
-      standFrames = 0;
+
+      // UP
+      if (angle > 165 && stage === "down") {
+        stage = "up";
+        count++;
+        document.getElementById("count").innerText = count;
+      }
     }
-    return;
   }
 
-  // Gate 2: real squat
-  if (angle < DOWN_ANGLE && squatState === "up") {
-    squatState = "down";
-  }
-
-  if (angle > STAND_ANGLE && squatState === "down") {
-    squatState = "up";
-    increaseCount();
-  }
+  requestAnimationFrame(detectPose);
 }
 
-/* -------------------------------------------------
-   KNEE HUG
-------------------------------------------------- */
-function runKneeHug(kp) {
-  const lh = kp[11], lk = kp[13];
-  const rh = kp[12], rk = kp[14];
-
-  if (lk.y < lh.y && !leftUp) {
-    leftUp = true;
-    increaseCount();
-  }
-  if (lk.y >= lh.y) leftUp = false;
-
-  if (rk.y < rh.y && !rightUp) {
-    rightUp = true;
-    increaseCount();
-  }
-  if (rk.y >= rh.y) rightUp = false;
-}
-
-/* -------------------------------------------------
-   LONG JUMP
-------------------------------------------------- */
-function runLongJump(kp) {
-  const la = kp[15];
-  const ra = kp[16];
-  const ground = canvas.height * 0.75;
-
-  if (la.y < ground && ra.y < ground) {
-    if (!inAir) inAir = true;
-  } else if (inAir) {
-    inAir = false;
-    increaseCount();
-  }
-}
-
-/* -------------------------------------------------
-   PLANK (TIME BASED)
-------------------------------------------------- */
-function runPlank(kp) {
-  const shoulder = kp[11];
-  const hip = kp[23];
-  const ankle = kp[27];
-
-  if (shoulder.score < 0.5 || hip.score < 0.5 || ankle.score < 0.5) return;
-
-  const angle = calculateAngle(shoulder, hip, ankle);
-
-  if (angle > 160) {
-    plankTimer++;
-    counterText.innerText = "Time: " + plankTimer + " sec";
-  }
-
-  if (plankTimer >= targetCount) {
-    alert("Plank Completed!");
-    stopExercise();
-  }
-}
-
-/* -------------------------------------------------
-   COUNT
-------------------------------------------------- */
-function increaseCount() {
-  count++;
-  counterText.innerText = "Count: " + count;
-
-  if (count >= targetCount) {
-    alert("Target Completed!");
-    stopExercise();
-  }
-}
-
-/* -------------------------------------------------
-   STOP
-------------------------------------------------- */
-function stopExercise() {
+// -------- STOP --------
+function stopCamera() {
   if (video.srcObject) {
-    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject.getTracks().forEach(track => track.stop());
   }
-  window.location.href = "index.html";
+  alert("Camera stopped");
 }
+
+// START CAMERA
+startCamera();
 </script>
 
 </body>

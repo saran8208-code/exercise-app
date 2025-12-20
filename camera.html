@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Chair Squat Counter</title>
+  <title>Chair Squat (Knee Only)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose"></script>
@@ -9,19 +9,41 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils"></script>
 
   <style>
-    body { margin:0; background:#111; color:white; font-family:Arial; text-align:center; }
-    .header { font-size:22px; padding:10px; }
-    .counter { font-size:72px; color:#00ff99; }
-    .status { font-size:20px; color:#ffd700; }
-    .container { position:relative; }
-    video, canvas { width:100%; max-height:55vh; }
-    canvas { position:absolute; left:0; top:0; }
-    button { margin:10px; padding:12px 25px; font-size:18px; background:red; color:white; border:none; border-radius:8px; }
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+      font-family: Arial;
+      text-align: center;
+    }
+    .header { font-size: 22px; padding: 10px; }
+    .counter { font-size: 72px; color: #00ff99; }
+    .status { font-size: 20px; color: #ffd700; }
+    .container { position: relative; }
+    video, canvas {
+      width: 100%;
+      max-height: 55vh;
+    }
+    canvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+    button {
+      margin: 15px;
+      padding: 15px 30px;
+      font-size: 20px;
+      background: red;
+      color: white;
+      border: none;
+      border-radius: 10px;
+    }
   </style>
 </head>
 
 <body>
-  <div class="header">Chair Squat</div>
+
+  <div class="header">Chair Squat (Knee Only)</div>
   <div class="counter" id="count">0</div>
   <div class="status" id="status">Stand straight</div>
 
@@ -36,56 +58,106 @@
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+
 const countText = document.getElementById("count");
 const statusText = document.getElementById("status");
 
 let count = 0;
 let stage = "up";
 
+// ---------- ANGLE FUNCTION ----------
 function calculateAngle(a, b, c) {
   const ab = Math.hypot(a.x - b.x, a.y - b.y);
   const bc = Math.hypot(b.x - c.x, b.y - c.y);
   const ac = Math.hypot(a.x - c.x, a.y - c.y);
-  return Math.acos((ab*ab + bc*bc - ac*ac) / (2*ab*bc)) * (180 / Math.PI);
+  return Math.acos(
+    (ab * ab + bc * bc - ac * ac) / (2 * ab * bc)
+  ) * (180 / Math.PI);
 }
 
-const pose = new Pose({ locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-pose.setOptions({ modelComplexity:1, smoothLandmarks:true, minDetectionConfidence:0.5, minTrackingConfidence:0.5 });
+// ---------- MEDIAPIPE ----------
+const pose = new Pose({
+  locateFile: file =>
+    `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+});
 
+pose.setOptions({
+  modelComplexity: 1,
+  smoothLandmarks: true,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5
+});
+
+// ---------- MAIN LOGIC ----------
 pose.onResults(results => {
-  if(!results.poseLandmarks) return;
+  if (!results.poseLandmarks) return;
 
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, {color:"#00FF00", lineWidth:4});
-  drawLandmarks(ctx, results.poseLandmarks, {color:"#FF0000", lineWidth:2});
+  // Draw ONLY legs (optional – still clear)
+  drawConnectors(ctx, results.poseLandmarks, [
+    [23,25],[25,27], // left leg
+    [24,26],[26,28]  // right leg
+  ], { color: "#00FF00", lineWidth: 5 });
 
-  // LEFT LEG landmarks
-  const hip = results.poseLandmarks[23];
-  const knee = results.poseLandmarks[25];
-  const ankle = results.poseLandmarks[27];
+  drawLandmarks(ctx, [
+    results.poseLandmarks[23],
+    results.poseLandmarks[25],
+    results.poseLandmarks[27],
+    results.poseLandmarks[24],
+    results.poseLandmarks[26],
+    results.poseLandmarks[28]
+  ], { color: "#FF0000", lineWidth: 2 });
 
-  const angle = calculateAngle(hip, knee, ankle);
+  // LEFT LEG
+  const hipL = results.poseLandmarks[23];
+  const kneeL = results.poseLandmarks[25];
+  const ankleL = results.poseLandmarks[27];
 
-  // STAGE LOGIC with updated DOWN_THRESHOLD 150
-  if(angle < 150 && stage === "up") {  // down detected below 150
+  // RIGHT LEG
+  const hipR = results.poseLandmarks[24];
+  const kneeR = results.poseLandmarks[26];
+  const ankleR = results.poseLandmarks[28];
+
+  // Knee angles
+  const angleL = calculateAngle(hipL, kneeL, ankleL);
+  const angleR = calculateAngle(hipR, kneeR, ankleR);
+
+  // AVERAGE (VERY IMPORTANT)
+  const kneeAngle = (angleL + angleR) / 2;
+
+  // ---------- SQUAT LOGIC ----------
+  if (kneeAngle < 150 && stage === "up") {
     stage = "down";
   }
-  if(angle > 165 && stage === "down") {  // up detected above 165
+
+  if (kneeAngle > 165 && stage === "down") {
     stage = "up";
     count++;
     countText.innerText = count;
   }
 
-  statusText.innerText = `Angle: ${angle.toFixed(0)} | Stage: ${stage}`;
+  statusText.innerText =
+    `Knee Angle: ${kneeAngle.toFixed(0)} | ${stage.toUpperCase()}`;
 });
 
-const camera = new Camera(video, { onFrame: async()=>{await pose.send({image:video})}, width:640, height:480 });
+// ---------- CAMERA ----------
+const camera = new Camera(video, {
+  onFrame: async () => {
+    await pose.send({ image: video });
+  },
+  width: 640,
+  height: 480
+});
+
 camera.start();
 
-function closeExercise(){ window.location.href="index.html"; }
+function closeExercise() {
+  window.location.href = "index.html";
+}
 </script>
+
 </body>
 </html>

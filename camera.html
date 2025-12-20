@@ -3,24 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Chair Squat</title>
+<title>Chair Squat Exercise</title>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 <style>
-body { text-align:center; font-family: Arial; }
-#video, #canvas { width:100%; max-width:400px; }
-#count { font-size:40px; color:#007BFF; font-weight:bold; }
-button { font-size:20px; padding:10px 20px; margin-top:10px; }
+body { margin:0; font-family:Arial,sans-serif; text-align:center; background:#f0f0f0; }
+#video, #canvas { width:100vw; height:100vh; object-fit:cover; position:absolute; top:0; left:0; }
+#overlay { position:absolute; top:10px; width:100%; text-align:center; z-index:2; }
+#count { font-size:50px; color:#007BFF; font-weight:bold; }
+#btnStop { font-size:25px; padding:10px 25px; margin-top:10px; background:#ff4d4d; color:#fff; border:none; border-radius:8px; }
 </style>
 </head>
 <body>
-<h1>Chair Squat Exercise</h1>
-<div id="count">Count: 0</div>
+
 <video id="video" autoplay playsinline muted></video>
 <canvas id="canvas"></canvas>
-<br>
-<button id="btnStop">Stop</button>
+<div id="overlay">
+  <div id="count">Count: 0</div>
+  <button id="btnStop">Stop</button>
+</div>
 
 <script>
 let video = document.getElementById("video");
@@ -37,9 +39,12 @@ let exerciseActive = true;
 document.getElementById("btnStop").onclick = stopExercise;
 
 async function startCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"user"}});
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "user", width: {ideal: 1280}, height: {ideal: 720} }
+  });
   video.srcObject = stream;
   await video.play();
+
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 
@@ -57,8 +62,8 @@ function calculateAngle(a,b,c){
   const dot = ab.x*cb.x + ab.y*cb.y;
   const magAB = Math.sqrt(ab.x*ab.x + ab.y*ab.y);
   const magCB = Math.sqrt(cb.x*cb.x + cb.y*cb.y);
-  if(magAB === 0 || magCB === 0) return 0;
-  let angle = Math.acos(Math.min(Math.max(dot / (magAB*magCB), -1),1)) * (180/Math.PI);
+  if(magAB===0||magCB===0) return 0;
+  let angle = Math.acos(Math.min(Math.max(dot/(magAB*magCB),-1),1))*(180/Math.PI);
   return angle;
 }
 
@@ -73,25 +78,23 @@ async function detectPose(){
     const kp = poses[0].keypoints;
     const hip = kp[11], knee=kp[13], ankle=kp[15];
 
-    // Debug: check confidence
-    // console.log("Hip:",hip.score,"Knee:",knee.score,"Ankle:",ankle.score);
-
     if(hip.score>0.5 && knee.score>0.5 && ankle.score>0.5){
       const angle = calculateAngle(hip,knee,ankle);
 
-      if(angle < 145 && stage==="up") stage="down";
-      if(angle > 165 && stage==="down"){
+      if(angle<145 && stage==="up") stage="down";
+      if(angle>165 && stage==="down"){
         stage="up";
         count++;
         countText.innerText = "Count: " + count;
 
-        if(count >= target){
+        if(count>=target){
           completeExercise();
           return;
         }
       }
     }
   }
+
   requestAnimationFrame(detectPose);
 }
 

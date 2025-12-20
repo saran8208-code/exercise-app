@@ -39,7 +39,8 @@ let countText = document.getElementById("count");
 let detector;
 let count = 0;
 let stage = "up";
-let target = 10; // your target
+let target = 5; // your target
+let exerciseActive = true; // ✅ control flag
 
 async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -68,16 +69,18 @@ function getAngle(a,b,c){
 }
 
 async function detectPose(){
+  if(!exerciseActive) return; // ✅ stop loop if exercise ended
+
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-  const poses=await detector.estimatePoses(video);
+  const poses = await detector.estimatePoses(video);
   if(poses.length>0){
-    const kp=poses[0].keypoints;
-    const hip=kp[11], knee=kp[13], ankle=kp[15];
+    const kp = poses[0].keypoints;
+    const hip = kp[11], knee = kp[13], ankle = kp[15];
 
     if(hip.score>0.5 && knee.score>0.5 && ankle.score>0.5){
-      const angle=getAngle(hip,knee,ankle);
+      const angle = getAngle(hip,knee,ankle);
 
       if(angle<145 && stage==="up") stage="down";
 
@@ -96,8 +99,9 @@ async function detectPose(){
   requestAnimationFrame(detectPose);
 }
 
-// ✅ TARGET COMPLETE
+// ✅ TARGET COMPLETED
 function completeExercise(){
+  exerciseActive = false; // stop further detection
   stopCamera();
   countText.innerText = "Target Completed ✔️";
 
@@ -116,6 +120,6 @@ function stopCamera(){
 
 startCamera();
 </script>
-
 </body>
 </html>
+

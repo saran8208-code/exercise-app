@@ -4,44 +4,17 @@
   <title>Chair Squat Counter</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- TensorFlow -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 
   <style>
-    body {
-      margin: 0;
-      background: black;
-      color: white;
-      font-family: Arial;
-      text-align: center;
-    }
-    h2 { margin: 10px; }
-    #count {
-      font-size: 60px;
-      color: #00ff99;
-    }
-    video, canvas {
-      width: 100%;
-      max-height: 65vh;
-    }
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-    }
-    .box {
-      position: relative;
-    }
-    button {
-      padding: 15px 30px;
-      font-size: 20px;
-      margin: 15px;
-      background: red;
-      color: white;
-      border: none;
-      border-radius: 10px;
-    }
+    body { margin:0; background:black; color:white; font-family:Arial; text-align:center; }
+    h2 { margin:10px; }
+    #count { font-size:60px; color:#00ff99; }
+    video, canvas { width:100%; max-height:65vh; }
+    canvas { position:absolute; top:0; left:0; }
+    .box { position:relative; }
+    button { padding:15px 30px; font-size:20px; margin:15px; background:red; color:white; border:none; border-radius:10px; }
   </style>
 </head>
 
@@ -51,7 +24,7 @@
 <div id="count">0</div>
 
 <div class="box">
-  <video id="video" autoplay playsinline></video>
+  <video id="video" autoplay playsinline muted></video>
   <canvas id="canvas"></canvas>
 </div>
 
@@ -65,13 +38,12 @@ let ctx = canvas.getContext("2d");
 let detector;
 let count = 0;
 let stage = "up";
+let target = 10; // 🔴 set your target here
 
-// -------- CAMERA START --------
 async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: "user" }
   });
-
   video.srcObject = stream;
   await video.play();
 
@@ -86,59 +58,54 @@ async function startCamera() {
   detectPose();
 }
 
-// -------- ANGLE --------
-function getAngle(a, b, c) {
-  const ab = Math.hypot(a.x - b.x, a.y - b.y);
-  const bc = Math.hypot(b.x - c.x, b.y - c.y);
-  const ac = Math.hypot(a.x - c.x, a.y - c.y);
-
-  return Math.acos(
-    (ab * ab + bc * bc - ac * ac) / (2 * ab * bc)
-  ) * (180 / Math.PI);
+function getAngle(a,b,c){
+  const ab=Math.hypot(a.x-b.x,a.y-b.y);
+  const bc=Math.hypot(b.x-c.x,b.y-c.y);
+  const ac=Math.hypot(a.x-c.x,a.y-c.y);
+  return Math.acos((ab*ab+bc*bc-ac*ac)/(2*ab*bc))*180/Math.PI;
 }
 
-// -------- MAIN LOOP --------
-async function detectPose() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+async function detectPose(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-  const poses = await detector.estimatePoses(video);
-  if (poses.length > 0) {
-    const kp = poses[0].keypoints;
+  const poses=await detector.estimatePoses(video);
+  if(poses.length>0){
+    const kp=poses[0].keypoints;
+    const hip=kp[11], knee=kp[13], ankle=kp[15];
 
-    const hip = kp[11];    // left hip
-    const knee = kp[13];  // left knee
-    const ankle = kp[15]; // left ankle
+    if(hip.score>0.5 && knee.score>0.5 && ankle.score>0.5){
+      const angle=getAngle(hip,knee,ankle);
 
-    if (hip.score > 0.5 && knee.score > 0.5 && ankle.score > 0.5) {
-      const angle = getAngle(hip, knee, ankle);
-
-      // DOWN
-      if (angle < 145 && stage === "up") {
-        stage = "down";
-      }
-
-      // UP
-      if (angle > 165 && stage === "down") {
-        stage = "up";
+      if(angle<145 && stage==="up") stage="down";
+      if(angle>165 && stage==="down"){
+        stage="up";
         count++;
-        document.getElementById("count").innerText = count;
+        document.getElementById("count").innerText=count;
+
+        if(count>=target){
+          completeExercise();
+          return;
+        }
       }
     }
   }
-
   requestAnimationFrame(detectPose);
 }
 
-// -------- STOP --------
-function stopCamera() {
-  if (video.srcObject) {
-    video.srcObject.getTracks().forEach(track => track.stop());
-  }
-  alert("Camera stopped");
+function completeExercise(){
+  stopCamera();
+  alert("Target Completed!");
+  window.location.href="exercise.html"; // 🔴 back to exercise page
 }
 
-// START CAMERA
+function stopCamera(){
+  if(video.srcObject){
+    video.srcObject.getTracks().forEach(t=>t.stop());
+  }
+  window.location.href="exercise.html";
+}
+
 startCamera();
 </script>
 

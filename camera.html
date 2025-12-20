@@ -2,7 +2,13 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport"
+  content="width=device-width,
+  height=device-height,
+  initial-scale=1.0,
+  maximum-scale=1.0,
+  user-scalable=no">
+
 <title>Chair Squat</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0"></script>
@@ -17,14 +23,29 @@ html, body {
   overflow: hidden;
   background: black;
 }
-video, canvas {
+
+/* FULL SCREEN CAMERA */
+#video {
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
   height: 100vh;
   object-fit: cover;
+  z-index: 1;
 }
+
+/* CANVAS SAME SIZE AS VIDEO */
+#canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 2;
+}
+
+/* UI OVERLAY */
 #ui {
   position: fixed;
   top: 10px;
@@ -34,11 +55,14 @@ video, canvas {
   color: white;
   font-family: Arial;
 }
+
 #count {
   font-size: 60px;
   font-weight: bold;
 }
+
 button {
+  margin-top: 10px;
   font-size: 22px;
   padding: 10px 25px;
   border-radius: 8px;
@@ -67,19 +91,16 @@ let ctx = canvas.getContext("2d");
 let detector;
 let count = 0;
 let stage = "up";
-let active = true;
 let target = 5;
+let active = true;
 
-let lastDetectTime = 0;
-
-// 🔴 ANDROID CAMERA FIX
+// ⭐ FORCE HIGH RES CAMERA ⭐
 async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
     video: {
-      facingMode: "environment", // BACK CAMERA
-      width: { ideal: 640 },
-      height: { ideal: 480 },
-      frameRate: { ideal: 30, max: 30 }
+      facingMode: "user",
+      width: { ideal: 1920 },
+      height: { ideal: 1080 }
     }
   });
 
@@ -94,54 +115,55 @@ async function startCamera() {
     { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
   );
 
-  requestAnimationFrame(loop);
+  detectPose();
 }
 
-// ANGLE
+// 🔺 ANGLE
 function angle(a, b, c) {
   const ab = { x: b.x - a.x, y: b.y - a.y };
   const cb = { x: b.x - c.x, y: b.y - c.y };
+
   const dot = ab.x * cb.x + ab.y * cb.y;
   const magAB = Math.hypot(ab.x, ab.y);
   const magCB = Math.hypot(cb.x, cb.y);
-  if (!magAB || !magCB) return 0;
-  return Math.acos(Math.min(Math.max(dot / (magAB * magCB), -1), 1)) * 180 / Math.PI;
+
+  if (magAB === 0 || magCB === 0) return 0;
+
+  return Math.acos(
+    Math.min(Math.max(dot / (magAB * magCB), -1), 1)
+  ) * (180 / Math.PI);
 }
 
-// 🔁 LOOP WITH THROTTLE
-async function loop(timestamp) {
+// 🔁 MAIN LOOP
+async function detectPose() {
   if (!active) return;
 
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  if (timestamp - lastDetectTime > 100) { // 👈 10 FPS detection
-    lastDetectTime = timestamp;
+  const poses = await detector.estimatePoses(video);
+  if (poses.length > 0) {
+    const kp = poses[0].keypoints;
 
-    const poses = await detector.estimatePoses(video);
-    if (poses.length) {
-      const kp = poses[0].keypoints;
+    const hip = kp[11];
+    const knee = kp[13];
+    const ankle = kp[15];
 
-      // 🔴 RIGHT LEG (ANDROID STABLE)
-      const hip = kp[12];
-      const knee = kp[14];
-      const ankle = kp[16];
+    // LOWER THRESHOLD FOR MOBILE
+    if (hip.score > 0.3 && knee.score > 0.3 && ankle.score > 0.3) {
+      const a = angle(hip, knee, ankle);
 
-      if (hip.score > 0.25 && knee.score > 0.25 && ankle.score > 0.25) {
-        const a = angle(hip, knee, ankle);
+      if (a < 150 && stage === "up") stage = "down";
+      if (a > 165 && stage === "down") {
+        stage = "up";
+        count++;
+        document.getElementById("count").innerText = count;
 
-        if (a < 150 && stage === "up") stage = "down";
-        if (a > 165 && stage === "down") {
-          stage = "up";
-          count++;
-          document.getElementById("count").innerText = count;
-
-          if (count >= target) finish();
-        }
+        if (count >= target) finish();
       }
     }
   }
-
-  requestAnimationFrame(loop);
+  requestAnimationFrame(detectPose);
 }
 
 function finish() {

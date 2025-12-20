@@ -5,10 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chair Squat</title>
 
-<!-- MediaPipe -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 
 <style>
 html, body {
@@ -19,7 +17,6 @@ html, body {
   overflow: hidden;
   background: black;
 }
-
 video, canvas {
   position: fixed;
   top: 0;
@@ -28,24 +25,20 @@ video, canvas {
   height: 100vh;
   object-fit: cover;
 }
-
 #ui {
   position: fixed;
   top: 10px;
   width: 100%;
   text-align: center;
-  z-index: 5;
+  z-index: 3;
   color: white;
   font-family: Arial;
 }
-
 #count {
   font-size: 60px;
   font-weight: bold;
 }
-
 button {
-  margin-top: 10px;
   font-size: 22px;
   padding: 10px 25px;
   border-radius: 8px;
@@ -67,96 +60,109 @@ button {
 </div>
 
 <script>
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
+let video = document.getElementById("video");
+let canvas = document.getElementById("canvas");
+let ctx = canvas.getContext("2d");
 
+let detector;
 let count = 0;
 let stage = "up";
 let active = true;
 let target = 5;
 
-// 🔺 ANGLE FUNCTION
-function angle(a, b, c) {
-  const ab = { x: a.x - b.x, y: a.y - b.y };
-  const cb = { x: c.x - b.x, y: c.y - b.y };
-  const dot = ab.x * cb.x + ab.y * cb.y;
-  const magAB = Math.hypot(ab.x, ab.y);
-  const magCB = Math.hypot(cb.x, cb.y);
-  return Math.acos(dot / (magAB * magCB)) * 180 / Math.PI;
-}
+let lastDetectTime = 0;
 
-// 🔹 MediaPipe Pose
-const pose = new Pose({
-  locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-});
+// 🔴 ANDROID CAMERA FIX
+async function startCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: {
+      facingMode: "environment", // BACK CAMERA
+      width: { ideal: 640 },
+      height: { ideal: 480 },
+      frameRate: { ideal: 30, max: 30 }
+    }
+  });
 
-pose.setOptions({
-  modelComplexity: 1,
-  smoothLandmarks: true,
-  enableSegmentation: false,
-  minDetectionConfidence: 0.5,
-  minTrackingConfidence: 0.5
-});
-
-// 🔁 RESULTS
-pose.onResults(results => {
-  if (!active) return;
+  video.srcObject = stream;
+  await video.play();
 
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+  detector = await poseDetection.createDetector(
+    poseDetection.SupportedModels.MoveNet,
+    { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+  );
 
-  if (!results.poseLandmarks) return;
-
-  // 👉 RIGHT LEG (STABLE)
-  const hip = results.poseLandmarks[24];
-  const knee = results.poseLandmarks[26];
-  const ankle = results.poseLandmarks[28];
-
-  const a = angle(hip, knee, ankle);
-
-  if (a < 150 && stage === "up") stage = "down";
-  if (a > 165 && stage === "down") {
-    stage = "up";
-    count++;
-    document.getElementById("count").innerText = count;
-
-    if (count >= target) finish();
-  }
-
-  drawLandmarks(ctx, results.poseLandmarks, { color: "#00FF00", lineWidth: 3 });
-  drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, { color: "#00FF00" });
-});
-
-// 🎥 CAMERA
-const camera = new Camera(video, {
-  onFrame: async () => {
-    await pose.send({ image: video });
-  },
-  width: 640,
-  height: 480,
-  facingMode: "environment" // BACK CAMERA
-});
-
-camera.start();
-
-// 🛑 STOP
-function stopExercise() {
-  active = false;
-  camera.stop();
-  location.href = "exercise.html";
+  requestAnimationFrame(loop);
 }
 
-// ✅ COMPLETE
+// ANGLE
+function angle(a, b, c) {
+  const ab = { x: b.x - a.x, y: b.y - a.y };
+  const cb = { x: b.x - c.x, y: b.y - c.y };
+  const dot = ab.x * cb.x + ab.y * cb.y;
+  const magAB = Math.hypot(ab.x, ab.y);
+  const magCB = Math.hypot(cb.x, cb.y);
+  if (!magAB || !magCB) return 0;
+  return Math.acos(Math.min(Math.max(dot / (magAB * magCB), -1), 1)) * 180 / Math.PI;
+}
+
+// 🔁 LOOP WITH THROTTLE
+async function loop(timestamp) {
+  if (!active) return;
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  if (timestamp - lastDetectTime > 100) { // 👈 10 FPS detection
+    lastDetectTime = timestamp;
+
+    const poses = await detector.estimatePoses(video);
+    if (poses.length) {
+      const kp = poses[0].keypoints;
+
+      // 🔴 RIGHT LEG (ANDROID STABLE)
+      const hip = kp[12];
+      const knee = kp[14];
+      const ankle = kp[16];
+
+      if (hip.score > 0.25 && knee.score > 0.25 && ankle.score > 0.25) {
+        const a = angle(hip, knee, ankle);
+
+        if (a < 150 && stage === "up") stage = "down";
+        if (a > 165 && stage === "down") {
+          stage = "up";
+          count++;
+          document.getElementById("count").innerText = count;
+
+          if (count >= target) finish();
+        }
+      }
+    }
+  }
+
+  requestAnimationFrame(loop);
+}
+
 function finish() {
   active = false;
-  camera.stop();
+  stopCamera();
   document.getElementById("count").innerText = "✔ DONE";
   setTimeout(() => location.href = "exercise.html", 1500);
 }
+
+function stopCamera() {
+  if (video.srcObject)
+    video.srcObject.getTracks().forEach(t => t.stop());
+}
+
+function stopExercise() {
+  active = false;
+  stopCamera();
+  location.href = "exercise.html";
+}
+
+startCamera();
 </script>
 
 </body>

@@ -1,125 +1,125 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Chair Squat Counter</title>
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0"></script>
+  <title>Chair Squat Exercise</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
-
   <style>
-    body { margin:0; background:black; color:white; font-family:Arial; text-align:center; }
-    h2 { margin:10px; }
-    #count { font-size:60px; color:#00ff99; }
-    video, canvas { width:100%; max-height:65vh; }
-    canvas { position:absolute; top:0; left:0; }
-    .box { position:relative; }
-    button { padding:15px 30px; font-size:20px; margin:15px; background:red; color:white; border:none; border-radius:10px; }
+    body { margin: 0; font-family: Arial, sans-serif; text-align: center; }
+    #video, #canvas { width: 100%; max-width: 400px; height: auto; }
+    #count { font-size: 36px; margin: 10px; color: #007BFF; font-weight: bold; }
+    #btnStop { font-size: 20px; padding: 10px 20px; margin-top: 10px; background-color: #ff4d4d; color: white; border: none; border-radius: 5px; }
   </style>
 </head>
-
 <body>
 
-<h2>Chair Squat</h2>
-<div id="count">0</div>
-
-<div class="box">
+  <h1>Chair Squat Exercise</h1>
+  <div id="count">Count: 0</div>
   <video id="video" autoplay playsinline muted></video>
   <canvas id="canvas"></canvas>
-</div>
+  <br>
+  <button id="btnStop">Stop</button>
 
-<button onclick="stopCamera()">STOP</button>
+  <script>
+    let video = document.getElementById("video");
+    let canvas = document.getElementById("canvas");
+    let ctx = canvas.getContext("2d");
+    let countText = document.getElementById("count");
 
-<script>
-let video = document.getElementById("video");
-let canvas = document.getElementById("canvas");
-let ctx = canvas.getContext("2d");
-let countText = document.getElementById("count");
+    let detector;
+    let count = 0;
+    let stage = "up";
+    let target = 5; // Set your target here
+    let exerciseActive = true;
 
-let detector;
-let count = 0;
-let stage = "up";
-let target = 5; // your target
-let exerciseActive = true; // ✅ control flag
+    document.getElementById("btnStop").addEventListener("click", stopExercise);
 
-async function startCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: "user" }
-  });
+    async function startCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" }
+      });
+      video.srcObject = stream;
+      await video.play();
 
-  video.srcObject = stream;
-  await video.play();
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+      detector = await poseDetection.createDetector(
+        poseDetection.SupportedModels.MoveNet,
+        { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+      );
 
-  detector = await poseDetection.createDetector(
-    poseDetection.SupportedModels.MoveNet,
-    { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
-  );
+      detectPose();
+    }
 
-  detectPose();
-}
+    function getAngle(a, b, c){
+      const ab = Math.hypot(a.x - b.x, a.y - b.y);
+      const bc = Math.hypot(b.x - c.x, b.y - c.y);
+      const ac = Math.hypot(a.x - c.x, a.y - c.y);
+      return Math.acos((ab*ab + bc*bc - ac*ac)/(2*ab*bc)) * 180/Math.PI;
+    }
 
-function getAngle(a,b,c){
-  const ab=Math.hypot(a.x-b.x,a.y-b.y);
-  const bc=Math.hypot(b.x-c.x,b.y-c.y);
-  const ac=Math.hypot(a.x-c.x,a.y-c.y);
-  return Math.acos((ab*ab+bc*bc-ac*ac)/(2*ab*bc))*180/Math.PI;
-}
+    async function detectPose(){
+      if(!exerciseActive) return;
 
-async function detectPose(){
-  if(!exerciseActive) return; // ✅ stop loop if exercise ended
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+      const poses = await detector.estimatePoses(video);
+      if(poses.length > 0){
+        const kp = poses[0].keypoints;
+        const hip = kp[11], knee = kp[13], ankle = kp[15];
 
-  const poses = await detector.estimatePoses(video);
-  if(poses.length>0){
-    const kp = poses[0].keypoints;
-    const hip = kp[11], knee = kp[13], ankle = kp[15];
+        // Debugging: Uncomment to check confidence scores on Android
+        // console.log("Hip:", hip.score, "Knee:", knee.score, "Ankle:", ankle.score);
 
-    if(hip.score>0.5 && knee.score>0.5 && ankle.score>0.5){
-      const angle = getAngle(hip,knee,ankle);
+        if(hip.score > 0.4 && knee.score > 0.4 && ankle.score > 0.4){
+          const angle = getAngle(hip, knee, ankle);
 
-      if(angle<145 && stage==="up") stage="down";
+          // Looser thresholds for mobile
+          if(angle < 150 && stage === "up") stage = "down";
+          if(angle > 160 && stage === "down"){
+            stage = "up";
+            count++;
+            countText.innerText = "Count: " + count;
 
-      if(angle>165 && stage==="down"){
-        stage="up";
-        count++;
-        countText.innerText = count;
-
-        if(count >= target){
-          completeExercise();
-          return;
+            if(count >= target){
+              completeExercise();
+              return;
+            }
+          }
         }
       }
+
+      requestAnimationFrame(detectPose);
     }
-  }
-  requestAnimationFrame(detectPose);
-}
 
-// ✅ TARGET COMPLETED
-function completeExercise(){
-  exerciseActive = false; // stop further detection
-  stopCamera();
-  countText.innerText = "Target Completed ✔️";
+    function completeExercise(){
+      exerciseActive = false;
+      stopCamera();
+      countText.innerText = "Target Completed ✔️";
 
-  setTimeout(() => {
-    window.location.href = "exercise.html";
-  }, 1500);
-}
+      setTimeout(() => {
+        window.location.href = "exercise.html"; // return to exercise page
+      }, 1500);
+    }
 
-// ✅ STOP BUTTON
-function stopCamera(){
-  if(video.srcObject){
-    video.srcObject.getTracks().forEach(t => t.stop());
-  }
-  window.location.href = "exercise.html"; // return to exercise page
-}
+    function stopCamera(){
+      if(video.srcObject){
+        video.srcObject.getTracks().forEach(t => t.stop());
+      }
+    }
 
-startCamera();
-</script>
+    function stopExercise(){
+      exerciseActive = false;
+      stopCamera();
+      window.location.href = "exercise.html"; // go back to exercise page
+    }
+
+    startCamera();
+  </script>
 </body>
 </html>
-

@@ -34,16 +34,18 @@
 let video = document.getElementById("video");
 let canvas = document.getElementById("canvas");
 let ctx = canvas.getContext("2d");
+let countText = document.getElementById("count");
 
 let detector;
 let count = 0;
 let stage = "up";
-let target = 10; // 🔴 set your target here
+let target = 10; // your target
 
 async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: "user" }
   });
+
   video.srcObject = stream;
   await video.play();
 
@@ -78,12 +80,13 @@ async function detectPose(){
       const angle=getAngle(hip,knee,ankle);
 
       if(angle<145 && stage==="up") stage="down";
+
       if(angle>165 && stage==="down"){
         stage="up";
         count++;
-        document.getElementById("count").innerText=count;
+        countText.innerText = count;
 
-        if(count>=target){
+        if(count >= target){
           completeExercise();
           return;
         }
@@ -93,17 +96,22 @@ async function detectPose(){
   requestAnimationFrame(detectPose);
 }
 
+// ✅ TARGET COMPLETE
 function completeExercise(){
   stopCamera();
-  alert("Target Completed!");
-  window.location.href="exercise.html"; // 🔴 back to exercise page
+  countText.innerText = "Target Completed ✔️";
+
+  setTimeout(() => {
+    window.location.href = "exercise.html";
+  }, 1500);
 }
 
+// ✅ STOP BUTTON
 function stopCamera(){
   if(video.srcObject){
-    video.srcObject.getTracks().forEach(t=>t.stop());
+    video.srcObject.getTracks().forEach(t => t.stop());
   }
-  window.location.href="exercise.html";
+  window.location.href = "exercise.html"; // return to exercise page
 }
 
 startCamera();

@@ -4,6 +4,7 @@
   <title>Exercise Camera</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+  <!-- TensorFlow -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 
@@ -58,31 +59,48 @@
 <button onclick="stopExercise()">Stop</button>
 
 <script>
-/* -------------------- VARIABLES -------------------- */
-let video = document.getElementById("video");
-let canvas = document.getElementById("output");
-let ctx = canvas.getContext("2d");
+/* -------------------------------------------------
+   VARIABLES (FROM YOUR PROJECT)
+------------------------------------------------- */
+const video = document.getElementById("video");
+const canvas = document.getElementById("output");
+const ctx = canvas.getContext("2d");
+const counterText = document.getElementById("counterText");
 
 let detector;
 let count = 0;
-let targetCount = parseInt(localStorage.getItem("targetCount"));
-let selectedExercise = localStorage.getItem("selectedExercise");
+
+// You already store these before opening camera page
+const selectedExercise = localStorage.getItem("selectedExercise");
+const targetCount = parseInt(localStorage.getItem("targetCount")) || 10;
 
 document.getElementById("exerciseTitle").innerText =
   selectedExercise.toUpperCase();
 
-/* ---- STATES (RESET SAFE) ---- */
+/* -------------------------------------------------
+   STATES (RESET SAFE)
+------------------------------------------------- */
 let squatState = "up";
 let leftUp = false;
 let rightUp = false;
 let inAir = false;
 let plankTimer = 0;
 
-/* -------------------- CAMERA START -------------------- */
+// Squat readiness gate
+let readyForSquat = false;
+let standFrames = 0;
+const STAND_ANGLE = 165;
+const DOWN_ANGLE = 145;
+const STAND_FRAMES_REQUIRED = 25;
+
+/* -------------------------------------------------
+   CAMERA START
+------------------------------------------------- */
 async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: "user" }
   });
+
   video.srcObject = stream;
   await video.play();
 
@@ -96,9 +114,12 @@ async function startCamera() {
 
   detectPose();
 }
+
 startCamera();
 
-/* -------------------- POSE LOOP -------------------- */
+/* -------------------------------------------------
+   MAIN LOOP
+------------------------------------------------- */
 async function detectPose() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
@@ -116,7 +137,9 @@ async function detectPose() {
   requestAnimationFrame(detectPose);
 }
 
-/* -------------------- ANGLE -------------------- */
+/* -------------------------------------------------
+   ANGLE CALCULATION (FIXED)
+------------------------------------------------- */
 function calculateAngle(a, b, c) {
   const ab = Math.hypot(a.x - b.x, a.y - b.y);
   const bc = Math.hypot(b.x - c.x, b.y - c.y);
@@ -127,7 +150,9 @@ function calculateAngle(a, b, c) {
   ) * (180 / Math.PI);
 }
 
-/* -------------------- CHAIR SQUAT -------------------- */
+/* -------------------------------------------------
+   CHAIR SQUAT (REAL DETECTION)
+------------------------------------------------- */
 function runSquat(kp) {
   const hip = kp[11];
   const knee = kp[13];
@@ -137,17 +162,34 @@ function runSquat(kp) {
 
   const angle = calculateAngle(hip, knee, ankle);
 
-  if (angle < 145 && squatState === "up") {
+  // Gate 1: stand still first
+  if (!readyForSquat) {
+    counterText.innerText = "Stand straight...";
+    if (angle > STAND_ANGLE) {
+      standFrames++;
+      if (standFrames >= STAND_FRAMES_REQUIRED) {
+        readyForSquat = true;
+      }
+    } else {
+      standFrames = 0;
+    }
+    return;
+  }
+
+  // Gate 2: real squat
+  if (angle < DOWN_ANGLE && squatState === "up") {
     squatState = "down";
   }
 
-  if (angle > 165 && squatState === "down") {
+  if (angle > STAND_ANGLE && squatState === "down") {
     squatState = "up";
     increaseCount();
   }
 }
 
-/* -------------------- KNEE HUG -------------------- */
+/* -------------------------------------------------
+   KNEE HUG
+------------------------------------------------- */
 function runKneeHug(kp) {
   const lh = kp[11], lk = kp[13];
   const rh = kp[12], rk = kp[14];
@@ -165,11 +207,12 @@ function runKneeHug(kp) {
   if (rk.y >= rh.y) rightUp = false;
 }
 
-/* -------------------- LONG JUMP -------------------- */
+/* -------------------------------------------------
+   LONG JUMP
+------------------------------------------------- */
 function runLongJump(kp) {
   const la = kp[15];
   const ra = kp[16];
-
   const ground = canvas.height * 0.75;
 
   if (la.y < ground && ra.y < ground) {
@@ -180,7 +223,9 @@ function runLongJump(kp) {
   }
 }
 
-/* -------------------- PLANK -------------------- */
+/* -------------------------------------------------
+   PLANK (TIME BASED)
+------------------------------------------------- */
 function runPlank(kp) {
   const shoulder = kp[11];
   const hip = kp[23];
@@ -192,8 +237,7 @@ function runPlank(kp) {
 
   if (angle > 160) {
     plankTimer++;
-    document.getElementById("counterText").innerText =
-      "Time: " + plankTimer + " sec";
+    counterText.innerText = "Time: " + plankTimer + " sec";
   }
 
   if (plankTimer >= targetCount) {
@@ -202,10 +246,12 @@ function runPlank(kp) {
   }
 }
 
-/* -------------------- COUNT -------------------- */
+/* -------------------------------------------------
+   COUNT
+------------------------------------------------- */
 function increaseCount() {
   count++;
-  document.getElementById("counterText").innerText = "Count: " + count;
+  counterText.innerText = "Count: " + count;
 
   if (count >= targetCount) {
     alert("Target Completed!");
@@ -213,7 +259,9 @@ function increaseCount() {
   }
 }
 
-/* -------------------- STOP -------------------- */
+/* -------------------------------------------------
+   STOP
+------------------------------------------------- */
 function stopExercise() {
   if (video.srcObject) {
     video.srcObject.getTracks().forEach(t => t.stop());
